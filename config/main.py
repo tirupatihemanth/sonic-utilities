@@ -1725,6 +1725,62 @@ config.add_command(dns.dns)
 # Switchport module
 config.add_command(switchport.switchport)
 
+# Recorder module
+@config.group()
+def recorder():
+    """Redis recorder service management"""
+    pass
+
+@recorder.command('start')
+def recorder_start():
+    """Enable and start redis-recorder.service"""
+    try:
+        clicommon.run_command(['systemctl', 'unmask', 'redis-recorder.service'], display_cmd=True)
+        clicommon.run_command(['systemctl', 'enable', 'redis-recorder.service'], display_cmd=True)
+        clicommon.run_command(['systemctl', 'start', 'redis-recorder.service'], display_cmd=True)
+        click.echo("Redis recorder service started successfully.")
+    except Exception as e:
+        click.secho(f"Failed to start redis-recorder service: {e}", fg='red')
+        raise click.Abort()
+
+@recorder.command('stop')
+def recorder_stop():
+    """Disable and stop redis-recorder.service"""
+    try:
+        clicommon.run_command(['systemctl', 'stop', 'redis-recorder.service'], display_cmd=True)
+        clicommon.run_command(['systemctl', 'disable', 'redis-recorder.service'], display_cmd=True)
+        clicommon.run_command(['systemctl', 'mask', 'redis-recorder.service'], display_cmd=True)
+        click.echo("Redis recorder service stopped successfully.")
+    except Exception as e:
+        click.secho(f"Failed to stop redis-recorder service: {e}", fg='red')
+        raise click.Abort()
+
+@recorder.command('state')
+@click.argument('db_type', type=click.Choice(['config-db', 'state-db']), required=True)
+@click.argument('state', type=click.Choice(['enabled', 'disabled']), required=True)
+def recorder_state(db_type, state):
+    """Configure recorder state in the specified database"""
+    # Get the database from the Click context
+    ctx = click.get_current_context()
+    db = ctx.obj.get('db') if ctx.obj else None
+    
+    try:
+        if db_type == 'config-db':
+            config_db = db.cfgdb
+            config_db.set_entry('RECORDER', 'config_db', {'state': state})
+        elif db_type == 'state-db':
+            db.connect(db.STATE_DB)
+            db.set(db.STATE_DB, 'RECORDER|state_db', 'state', state)
+        else:
+            # This should never happen due to click.Choice validation, but good for future extensibility
+            click.secho(f"Unsupported database type: {db_type}", fg='red')
+            sys.exit(1)
+    except Exception as e:
+        click.secho(f"Failed to set recorder state: {e}", fg='red')
+        sys.exit(1)
+
+config.add_command(recorder)
+
 @config.command()
 @click.option('-y', '--yes', is_flag=True, callback=_abort_if_false,
                 expose_value=False, prompt='Existing files will be overwritten, continue?')
