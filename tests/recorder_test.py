@@ -114,97 +114,98 @@ class TestConfigRecorder(unittest.TestCase):
         self.assertEqual(result.exit_code, 1)
         self.assertIn("Failed to stop redis-recorder service: systemctl command failed", result.output)
 
-    @patch('swsscommon.swsscommon.SonicV2Connector')
-    def test_recorder_state_config_db_success(self, mock_sonic_connector):
+    def test_recorder_state_config_db_success(self):
         """Test successful recorder state command for config-db"""
         from click.testing import CliRunner
+        from utilities_common.db import Db
         
         runner = CliRunner()
         
-        # Mock the database connection
-        mock_db = MagicMock()
-        mock_sonic_connector.return_value = mock_db
+        # Create a proper mock Db object
+        mock_db = MagicMock(spec=Db)
+        mock_cfgdb = MagicMock()
+        mock_db.cfgdb = mock_cfgdb
         
         # Mock successful database operation
-        mock_db.cfgdb.set_entry.return_value = None
+        mock_cfgdb.set_entry.return_value = None
         
         result = runner.invoke(
             config.config.commands['recorder'].commands['state'],
             ['config-db', 'enabled'],
-            obj={'db': mock_db})
+            obj=mock_db)
         
         self.assertEqual(result.exit_code, 0)
         
         # Verify the database call was made correctly
-        mock_db.cfgdb.set_entry.assert_called_once_with('RECORDER', 'config_db', {'state': 'enabled'})
+        mock_cfgdb.set_entry.assert_called_once_with('RECORDER', 'config_db', {'state': 'enabled'})
 
-    @patch('swsscommon.swsscommon.SonicV2Connector')
-    def test_recorder_state_state_db_success(self, mock_sonic_connector):
+    def test_recorder_state_state_db_success(self):
         """Test successful recorder state command for state-db"""
         from click.testing import CliRunner
+        from utilities_common.db import Db
         
         runner = CliRunner()
         
-        # Mock the database connection
-        mock_db = MagicMock()
-        mock_sonic_connector.return_value = mock_db
-        mock_db.STATE_DB = 'STATE_DB'
+        # Create a proper mock Db object
+        mock_db = MagicMock(spec=Db)
+        mock_cfgdb = MagicMock()
+        mock_db.cfgdb = mock_cfgdb
         
         # Mock successful database operation
-        mock_db.set.return_value = None
+        mock_cfgdb.set_entry.return_value = None
         
         result = runner.invoke(
             config.config.commands['recorder'].commands['state'],
             ['state-db', 'disabled'],
-            obj={'db': mock_db})
+            obj=mock_db)
         
         self.assertEqual(result.exit_code, 0)
         
-        # Verify the database calls were made correctly
-        mock_db.connect.assert_called_once_with(mock_db.STATE_DB)
-        mock_db.set.assert_called_once_with(mock_db.STATE_DB, 'RECORDER|state_db', 'state', 'disabled')
+        # Verify the database call was made correctly (both options write to config_db)
+        mock_cfgdb.set_entry.assert_called_once_with('RECORDER', 'state_db', {'state': 'disabled'})
 
-    @patch('swsscommon.swsscommon.SonicV2Connector')
-    def test_recorder_state_config_db_failure(self, mock_sonic_connector):
+    def test_recorder_state_config_db_failure(self):
         """Test recorder state command failure for config-db"""
         from click.testing import CliRunner
+        from utilities_common.db import Db
         
         runner = CliRunner()
         
-        # Mock the database connection
-        mock_db = MagicMock()
-        mock_sonic_connector.return_value = mock_db
+        # Create a proper mock Db object
+        mock_db = MagicMock(spec=Db)
+        mock_cfgdb = MagicMock()
+        mock_db.cfgdb = mock_cfgdb
         
         # Mock database operation failure
-        mock_db.cfgdb.set_entry.side_effect = Exception("Database operation failed")
+        mock_cfgdb.set_entry.side_effect = Exception("Database operation failed")
         
         result = runner.invoke(
             config.config.commands['recorder'].commands['state'],
             ['config-db', 'enabled'],
-            obj={'db': mock_db})
+            obj=mock_db)
         
         self.assertEqual(result.exit_code, 1)
         self.assertIn("Failed to set recorder state: Database operation failed", result.output)
 
-    @patch('swsscommon.swsscommon.SonicV2Connector')
-    def test_recorder_state_state_db_failure(self, mock_sonic_connector):
+    def test_recorder_state_state_db_failure(self):
         """Test recorder state command failure for state-db"""
         from click.testing import CliRunner
+        from utilities_common.db import Db
         
         runner = CliRunner()
         
-        # Mock the database connection
-        mock_db = MagicMock()
-        mock_sonic_connector.return_value = mock_db
-        mock_db.STATE_DB = 'STATE_DB'
+        # Create a proper mock Db object
+        mock_db = MagicMock(spec=Db)
+        mock_cfgdb = MagicMock()
+        mock_db.cfgdb = mock_cfgdb
         
         # Mock database operation failure
-        mock_db.set.side_effect = Exception("Database operation failed")
+        mock_cfgdb.set_entry.side_effect = Exception("Database operation failed")
         
         result = runner.invoke(
             config.config.commands['recorder'].commands['state'],
             ['state-db', 'enabled'],
-            obj={'db': mock_db})
+            obj=mock_db)
         
         self.assertEqual(result.exit_code, 1)
         self.assertIn("Failed to set recorder state: Database operation failed", result.output)

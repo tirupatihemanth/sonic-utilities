@@ -1758,19 +1758,15 @@ def recorder_stop():
 @recorder.command('state')
 @click.argument('db_type', type=click.Choice(['config-db', 'state-db']), required=True)
 @click.argument('state', type=click.Choice(['enabled', 'disabled']), required=True)
-def recorder_state(db_type, state):
+@clicommon.pass_db
+def recorder_state(db, db_type, state):
     """Configure recorder state in the specified database"""
-    # Get the database from the Click context
-    ctx = click.get_current_context()
-    db = ctx.obj.get('db') if ctx.obj else None
-    
     try:
+        config_db = db.cfgdb
         if db_type == 'config-db':
-            config_db = db.cfgdb
             config_db.set_entry('RECORDER', 'config_db', {'state': state})
         elif db_type == 'state-db':
-            db.connect(db.STATE_DB)
-            db.set(db.STATE_DB, 'RECORDER|state_db', 'state', state)
+            config_db.set_entry('RECORDER', 'state_db', {'state': state})
         else:
             # This should never happen due to click.Choice validation, but good for future extensibility
             click.secho(f"Unsupported database type: {db_type}", fg='red')
