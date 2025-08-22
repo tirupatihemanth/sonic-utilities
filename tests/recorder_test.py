@@ -32,88 +32,6 @@ class TestConfigRecorder(unittest.TestCase):
         """Set up each test"""
         pass
 
-    @patch('utilities_common.cli.run_command')
-    def test_recorder_start_success(self, mock_run_command):
-        """Test successful recorder start command"""
-        from click.testing import CliRunner
-        
-        runner = CliRunner()
-        
-        # Mock successful systemctl commands
-        mock_run_command.return_value = (0, "")
-        
-        result = runner.invoke(
-            config.config.commands['recorder'].commands['start'])
-        
-        self.assertEqual(result.exit_code, 0)
-        self.assertIn("Redis recorder service started successfully.", result.output)
-        
-        # Verify all systemctl commands were called in correct order
-        expected_calls = [
-            mock.call(['systemctl', 'unmask', 'redis-recorder.service'], display_cmd=True),
-            mock.call(['systemctl', 'enable', 'redis-recorder.service'], display_cmd=True),
-            mock.call(['systemctl', 'start', 'redis-recorder.service'], display_cmd=True)
-        ]
-        mock_run_command.assert_has_calls(expected_calls)
-        self.assertEqual(mock_run_command.call_count, 3)
-
-    @patch('utilities_common.cli.run_command')
-    def test_recorder_start_failure(self, mock_run_command):
-        """Test recorder start command with systemctl failure"""
-        from click.testing import CliRunner
-        
-        runner = CliRunner()
-        
-        # Mock systemctl command failure
-        mock_run_command.side_effect = Exception("systemctl command failed")
-        
-        result = runner.invoke(
-            config.config.commands['recorder'].commands['start'])
-        
-        self.assertEqual(result.exit_code, 1)
-        self.assertIn("Failed to start redis-recorder service: systemctl command failed", result.output)
-
-    @patch('utilities_common.cli.run_command')
-    def test_recorder_stop_success(self, mock_run_command):
-        """Test successful recorder stop command"""
-        from click.testing import CliRunner
-        
-        runner = CliRunner()
-        
-        # Mock successful systemctl commands
-        mock_run_command.return_value = (0, "")
-        
-        result = runner.invoke(
-            config.config.commands['recorder'].commands['stop'])
-        
-        self.assertEqual(result.exit_code, 0)
-        self.assertIn("Redis recorder service stopped successfully.", result.output)
-        
-        # Verify all systemctl commands were called in correct order
-        expected_calls = [
-            mock.call(['systemctl', 'stop', 'redis-recorder.service'], display_cmd=True),
-            mock.call(['systemctl', 'disable', 'redis-recorder.service'], display_cmd=True),
-            mock.call(['systemctl', 'mask', 'redis-recorder.service'], display_cmd=True)
-        ]
-        mock_run_command.assert_has_calls(expected_calls)
-        self.assertEqual(mock_run_command.call_count, 3)
-
-    @patch('utilities_common.cli.run_command')
-    def test_recorder_stop_failure(self, mock_run_command):
-        """Test recorder stop command with systemctl failure"""
-        from click.testing import CliRunner
-        
-        runner = CliRunner()
-        
-        # Mock systemctl command failure
-        mock_run_command.side_effect = Exception("systemctl command failed")
-        
-        result = runner.invoke(
-            config.config.commands['recorder'].commands['stop'])
-        
-        self.assertEqual(result.exit_code, 1)
-        self.assertIn("Failed to stop redis-recorder service: systemctl command failed", result.output)
-
     def test_recorder_state_config_db_success(self):
         """Test successful recorder state command for config-db"""
         from click.testing import CliRunner
@@ -135,8 +53,6 @@ class TestConfigRecorder(unittest.TestCase):
             obj=mock_db)
         
         self.assertEqual(result.exit_code, 0)
-        
-        # Verify the database call was made correctly
         mock_cfgdb.set_entry.assert_called_once_with('RECORDER', 'config_db', {'state': 'enabled'})
 
     def test_recorder_state_state_db_success(self):
@@ -160,8 +76,6 @@ class TestConfigRecorder(unittest.TestCase):
             obj=mock_db)
         
         self.assertEqual(result.exit_code, 0)
-        
-        # Verify the database call was made correctly (both options write to config_db)
         mock_cfgdb.set_entry.assert_called_once_with('RECORDER', 'state_db', {'state': 'disabled'})
 
     def test_recorder_state_config_db_failure(self):
@@ -204,7 +118,7 @@ class TestConfigRecorder(unittest.TestCase):
         
         result = runner.invoke(
             config.config.commands['recorder'].commands['state'],
-            ['state-db', 'enabled'],
+            ['state-db', 'disabled'],
             obj=mock_db)
         
         self.assertEqual(result.exit_code, 1)
@@ -244,14 +158,10 @@ class TestConfigRecorder(unittest.TestCase):
         # Verify the recorder group exists
         self.assertIn('recorder', config.config.commands)
         
-        # Verify the start command exists
-        self.assertIn('start', config.config.commands['recorder'].commands)
-        
-        # Verify the stop command exists
-        self.assertIn('stop', config.config.commands['recorder'].commands)
-        
-        # Verify the state command exists
+        # Verify only the state command exists (start/stop were removed)
         self.assertIn('state', config.config.commands['recorder'].commands)
+        self.assertNotIn('start', config.config.commands['recorder'].commands)
+        self.assertNotIn('stop', config.config.commands['recorder'].commands)
 
     def test_recorder_help_texts(self):
         """Test that recorder commands have proper help text"""
@@ -263,16 +173,6 @@ class TestConfigRecorder(unittest.TestCase):
         result = runner.invoke(config.config.commands['recorder'], ['--help'])
         self.assertEqual(result.exit_code, 0)
         self.assertIn("Redis recorder service management", result.output)
-        
-        # Test start command help
-        result = runner.invoke(config.config.commands['recorder'].commands['start'], ['--help'])
-        self.assertEqual(result.exit_code, 0)
-        self.assertIn("Enable and start redis-recorder.service", result.output)
-        
-        # Test stop command help
-        result = runner.invoke(config.config.commands['recorder'].commands['stop'], ['--help'])
-        self.assertEqual(result.exit_code, 0)
-        self.assertIn("Disable and stop redis-recorder.service", result.output)
         
         # Test state command help
         result = runner.invoke(config.config.commands['recorder'].commands['state'], ['--help'])

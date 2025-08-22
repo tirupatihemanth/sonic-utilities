@@ -1731,30 +1731,6 @@ def recorder():
     """Redis recorder service management"""
     pass
 
-@recorder.command('start')
-def recorder_start():
-    """Enable and start redis-recorder.service"""
-    try:
-        clicommon.run_command(['systemctl', 'unmask', 'redis-recorder.service'], display_cmd=True)
-        clicommon.run_command(['systemctl', 'enable', 'redis-recorder.service'], display_cmd=True)
-        clicommon.run_command(['systemctl', 'start', 'redis-recorder.service'], display_cmd=True)
-        click.echo("Redis recorder service started successfully.")
-    except Exception as e:
-        click.secho(f"Failed to start redis-recorder service: {e}", fg='red')
-        raise click.Abort()
-
-@recorder.command('stop')
-def recorder_stop():
-    """Disable and stop redis-recorder.service"""
-    try:
-        clicommon.run_command(['systemctl', 'stop', 'redis-recorder.service'], display_cmd=True)
-        clicommon.run_command(['systemctl', 'disable', 'redis-recorder.service'], display_cmd=True)
-        clicommon.run_command(['systemctl', 'mask', 'redis-recorder.service'], display_cmd=True)
-        click.echo("Redis recorder service stopped successfully.")
-    except Exception as e:
-        click.secho(f"Failed to stop redis-recorder service: {e}", fg='red')
-        raise click.Abort()
-
 @recorder.command('state')
 @click.argument('db_type', type=click.Choice(['config-db', 'state-db']), required=True)
 @click.argument('state', type=click.Choice(['enabled', 'disabled']), required=True)
