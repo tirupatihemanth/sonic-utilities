@@ -999,14 +999,22 @@ def _stop_services():
     clicommon.run_command(['sudo', 'systemctl', 'stop', 'sonic.target', '--job-mode', 'replace-irreversibly'])
 
 
-def _get_sonic_services():
+def _get_sonic_services(reverse=False):
     cmd = ['systemctl', 'list-dependencies', '--plain', 'sonic.target']
+    if reverse:
+        cmd.append('--reverse')
+        cmd.append('--type=service')
+
     out, _ = clicommon.run_command(cmd, return_cmd=True)
     out = out.strip().split('\n')[1:]
     return (unit.strip() for unit in out)
 
+
 def _reset_failed_services():
-    for service in _get_sonic_services():
+    services = set(_get_sonic_services())
+    services.update(set(_get_sonic_services(True)))
+
+    for service in services:
         clicommon.run_command(['systemctl', 'reset-failed', str(service)])
 
 
@@ -1037,6 +1045,26 @@ def wait_service_restart_finish(service, last_timestamp, timeout=30):
     log.log_warning("Service: {} does not restart in {} seconds, stop waiting".format(service, timeout))
 
 
+def _wait_for_monit_service_monitored(service, timeout=10):
+    """Poll monit status until the service leaves 'Not monitored' state.
+    Because monit monitor <service> is asynchronous — it returns before the action
+    completes.
+    """
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        output, ret = clicommon.run_command(
+            ['sudo', 'monit', 'status', service], return_cmd=True
+        )
+        if ret == 0:
+            for line in output.splitlines():
+                if 'monitoring status' in line.lower():
+                    if 'not monitored' not in line.lower():
+                        return
+                    break
+        time.sleep(0.1)
+    log.log_error("Monit monitor action for '{}' did not complete within {} seconds".format(service, timeout))
+
+
 def _restart_services():
     last_interface_config_timestamp = get_service_finish_timestamp('interfaces-config')
     last_networking_timestamp = get_service_finish_timestamp('networking')
@@ -1054,7 +1082,9 @@ def _restart_services():
         click.echo("Enabling container and routeCheck monitoring ...")
         clicommon.run_command(['sudo', 'monit', 'monitor', 'routeCheck'])
         clicommon.run_command(['sudo', 'monit', 'monitor', 'container_checker'])
-        time.sleep(1)
+        log.log_notice("Waiting for monit monitor actions to complete ...")
+        _wait_for_monit_service_monitored('routeCheck')
+        _wait_for_monit_service_monitored('container_checker')
     except subprocess.CalledProcessError as err:
         pass
     # Reload Monit configuration to pick up new hostname in case it changed
@@ -1136,6 +1166,32 @@ def interface_has_mirror_config(ctx, mirror_table, dst_port, src_port, direction
 
     return False
 
+
+def is_port_mirror_capability_supported(direction, namespace=None):
+    """ Check if port mirror capability is supported for the given direction """
+    state_db = SonicV2Connector(use_unix_socket_path=True, namespace=namespace)
+    state_db.connect(state_db.STATE_DB, False)
+    entry_name = "SWITCH_CAPABILITY|switch"
+
+    # If no direction is specified, check both ingress and egress capabilities
+    if not direction:
+        ingress_supported = state_db.get(state_db.STATE_DB, entry_name, "PORT_INGRESS_MIRROR_CAPABLE")
+        egress_supported = state_db.get(state_db.STATE_DB, entry_name, "PORT_EGRESS_MIRROR_CAPABLE")
+        return ingress_supported == "true" and egress_supported == "true"
+
+    if direction in ['rx', 'both']:
+        ingress_supported = state_db.get(state_db.STATE_DB, entry_name, "PORT_INGRESS_MIRROR_CAPABLE")
+        if ingress_supported != "true":
+            return False
+
+    if direction in ['tx', 'both']:
+        egress_supported = state_db.get(state_db.STATE_DB, entry_name, "PORT_EGRESS_MIRROR_CAPABLE")
+        if egress_supported != "true":
+            return False
+
+    return True
+
+
 def validate_mirror_session_config(config_db, session_name, dst_port, src_port, direction):
     """ Check if SPAN mirror-session config is valid """
     ctx = click.get_current_context()
@@ -1157,7 +1213,6 @@ def validate_mirror_session_config(config_db, session_name, dst_port, src_port, 
         if interface_is_in_vlan(vlan_member_table, dst_port):
             ctx.fail("Error: Destination Interface {} has vlan config".format(dst_port))
 
-
         if interface_is_in_portchannel(portchannel_member_table, dst_port):
             ctx.fail("Error: Destination Interface {} has portchannel config".format(dst_port))
 
@@ -1177,6 +1232,12 @@ def validate_mirror_session_config(config_db, session_name, dst_port, src_port, 
     if direction:
         if direction not in ['rx', 'tx', 'both']:
             ctx.fail("Error: Direction {} is invalid".format(direction))
+
+    # Check port mirror capability before allowing configuration
+    # If direction is provided, check the specific direction
+    if not is_port_mirror_capability_supported(direction):
+        ctx.fail("Error: Port mirror direction '{}' is not supported by the ASIC".format(
+            direction if direction else 'both'))
 
     return True
 
@@ -3295,7 +3356,8 @@ def stop(verbose):
 
 @pfcwd.command()
 @click.option('--verbose', is_flag=True, help="Enable verbose output")
-@click.argument('poll_interval', type=click.IntRange(100, 3000))
+# Keep in sync with the pfcwd CLI validation and sonic-pfcwd YANG model.
+@click.argument('poll_interval', type=click.IntRange(100, 1000))
 def interval(poll_interval, verbose):
     """ Set PFC watchdog counter polling interval (ms) """
 

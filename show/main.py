@@ -510,9 +510,12 @@ def storm_control(ctx, namespace, display):
 
 @storm_control.command('interface')
 @click.argument('interface', metavar='<interface>',required=True)
-def interface(interface, namespace, display):
+@click.pass_context
+def interface(ctx, interface):
+    # Get namespace from parent context
+    namespace = ctx.parent.params.get('namespace')
+
     if multi_asic.is_multi_asic() and namespace not in multi_asic.get_namespace_list():
-        ctx = click.get_current_context()
         ctx.fail('-n/--namespace option required. provide namespace from list {}'.format(multi_asic.get_namespace_list()))
     if interface:
         display_storm_interface(interface)
@@ -808,7 +811,8 @@ def counters(interfacename, namespace, display, all, trim, voq, nonzero, json, v
 @click.option('--verbose', is_flag=True, help="Enable verbose output")
 @click.option('--json', is_flag=True, help="JSON output")
 @click.option('--voq', is_flag=True, help="VOQ counters")
-def wredcounters(interfacename, namespace, display, verbose, json, voq):
+@click.option('-nz', '--nonzero', is_flag=True, help="Non Zero Counters")
+def wredcounters(interfacename, namespace, display, verbose, json, voq, nonzero):
     """Show queue wredcounters"""
 
     cmd = ["wredstat"]
@@ -828,6 +832,9 @@ def wredcounters(interfacename, namespace, display, verbose, json, voq):
 
     if voq:
         cmd += ["-V"]
+
+    if nonzero:
+        cmd += ["-nz"]
 
     run_command(cmd, display_cmd=verbose)
 
