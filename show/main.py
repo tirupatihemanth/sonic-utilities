@@ -12,7 +12,7 @@ import utilities_common.multi_asic as multi_asic_util
 from importlib import reload
 from natsort import natsorted
 from sonic_py_common import device_info
-from swsscommon.swsscommon import SonicV2Connector, ConfigDBConnector
+from swsscommon.swsscommon import SonicV2Connector, ConfigDBConnector, SonicDBConfig
 from tabulate import tabulate
 from utilities_common import util_base
 from utilities_common import hft as hft_common
@@ -334,6 +334,45 @@ cli.add_command(srv6.srv6)
 cli.add_command(switch.switch)
 cli.add_command(icmp.icmp)
 cli.add_command(copp.copp)
+
+# recorder module
+def get_available_databases():
+    """Get list of available databases from database_config.json"""
+    try:
+        return list(SonicDBConfig.getDbList())
+    except Exception as e:
+        # Fallback to default databases if config loading fails
+        return ['CONFIG_DB', 'STATE_DB', 'APPL_DB', 'ASIC_DB', 'COUNTERS_DB']
+
+@cli.group()
+def recorder():
+    """Redis recorder service status"""
+    pass
+
+@recorder.command('status')
+@clicommon.pass_db
+def recorder_status(db):
+    """Show recorder status for all databases"""
+    try:
+        config_db = db.cfgdb
+        available_dbs = get_available_databases()
+
+        click.echo("Recorder Status:")
+        click.echo("=" * 50)
+
+        for db_name in available_dbs:
+            try:
+                entry = config_db.get_entry('RECORDER', db_name)
+                state = entry.get('state', 'disabled') if entry else 'disabled'
+                click.echo(f"{db_name:<20} : {state}")
+            except Exception:
+                click.echo(f"{db_name:<20} : disabled")
+
+    except Exception as e:
+        click.echo(f"Failed to show recorder states: {e}")
+        sys.exit(1)
+
+
 
 # syslog module
 cli.add_command(syslog.syslog)

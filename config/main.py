@@ -34,7 +34,7 @@ from sonic_py_common.interface import get_interface_table_name, get_port_table_n
 from utilities_common import util_base
 from swsscommon import swsscommon
 from swsscommon.swsscommon import SonicV2Connector, ConfigDBConnector, ConfigDBPipeConnector, \
-                                isInterfaceNameValid, IFACE_NAME_MAX_LEN
+                                isInterfaceNameValid, IFACE_NAME_MAX_LEN, SonicDBConfig
 from utilities_common.db import Db
 from utilities_common.intf_filter import parse_interface_in_filter
 from utilities_common import bgp_util
@@ -1643,6 +1643,83 @@ config.add_command(dns.dns)
 
 # Switchport module
 config.add_command(switchport.switchport)
+
+# Recorder module
+@config.group()
+def recorder():
+    """Redis recorder service management"""
+    pass
+
+def get_available_databases():
+    """Get list of available databases from database_config.json"""
+    try:
+        return list(SonicDBConfig.getDbList())
+    except Exception as e:
+        # Fallback to default databases if config loading fails
+        return ['CONFIG_DB', 'STATE_DB', 'APPL_DB', 'ASIC_DB', 'COUNTERS_DB']
+
+@recorder.command('state')
+@click.argument('db_type', type=str, required=True)
+@click.argument('state', type=click.Choice(['enabled', 'disabled']), required=True)
+@clicommon.pass_db
+def recorder_state(db, db_type, state):
+    """Configure recorder state in the specified database"""
+    try:
+        config_db = db.cfgdb
+
+        # Validate that the database type exists in available databases
+        available_dbs = get_available_databases()
+        if db_type not in available_dbs:
+            click.echo(f"Error: Database '{db_type}' not found. Available databases: {', '.join(available_dbs)}")
+            sys.exit(1)
+
+        # Set the recorder state for the specified database
+        config_db.set_entry('RECORDER', db_type, {'state': state})
+
+        click.echo(f"Successfully set recorder state for {db_type} to {state}")
+
+    except Exception as e:
+        click.echo(f"Failed to set recorder state: {e}")
+        sys.exit(1)
+
+
+
+@recorder.command('enable-all')
+@clicommon.pass_db
+def recorder_enable_all(db):
+    """Enable recorder for all databases"""
+    try:
+        config_db = db.cfgdb
+        available_dbs = get_available_databases()
+
+        for db_name in available_dbs:
+            config_db.set_entry('RECORDER', db_name, {'state': 'enabled'})
+
+        click.echo(f"Successfully enabled recorder for all {len(available_dbs)} databases")
+
+    except Exception as e:
+        click.echo(f"Failed to enable recorder for all databases: {e}")
+        sys.exit(1)
+
+@recorder.command('disable-all')
+@clicommon.pass_db
+def recorder_disable_all(db):
+    """Disable recorder for all databases"""
+    try:
+        config_db = db.cfgdb
+        available_dbs = get_available_databases()
+
+        for db_name in available_dbs:
+            config_db.set_entry('RECORDER', db_name, {'state': 'disabled'})
+
+        click.echo(f"Successfully disabled recorder for all databases")
+
+    except Exception as e:
+        click.echo(f"Failed to disable recorder for all databases: {e}")
+        sys.exit(1)
+
+
+config.add_command(recorder)
 
 @config.command()
 @click.option('-y', '--yes', is_flag=True, callback=_abort_if_false,
